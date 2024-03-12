@@ -2,7 +2,7 @@ import json
 import os
 from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
-from typing import Any, Dict, Optional, Union, cast
+from typing import Any, Optional, Union, cast
 
 from ape.api import AccountAPI, AccountContainerAPI, ReceiptAPI, TransactionAPI
 from ape.api.address import BaseAddress
@@ -180,7 +180,7 @@ class SafeContainer(AccountContainerAPI):
 def get_signatures(
     safe_tx: SafeTx,
     signers: Iterable[AccountAPI],
-) -> Dict[AddressType, MessageSignature]:
+) -> dict[AddressType, MessageSignature]:
     signatures: Dict[AddressType, MessageSignature] = {}
     for signer in signers:
         signature = signer.sign_message(safe_tx)
@@ -362,6 +362,48 @@ class SafeAccount(AccountAPI):
         }
         return self.safe_tx_def(**safe_tx)
 
+    def all_delegates(self) -> Iterator[AddressType]:
+        for delegates in self.client.get_delegates().values():
+            yield from delegates
+
+    def propose_safe_tx(
+        self,
+        safe_tx: SafeTx,
+        submitter: Union[AccountAPI, AddressType, str, None] = None,
+        sigs_by_signer: Optional[dict[AddressType, MessageSignature]] = None,
+        contractTransactionHash: Optional[SafeTxID] = None,
+    ) -> SafeTxID:
+        """
+        Propose a transaction to the Safe API client
+        """
+        if not contractTransactionHash:
+            contractTransactionHash = get_safe_tx_hash(safe_tx)
+
+        if not sigs_by_signer:
+            sigs_by_signer = {}
+
+        if submitter is not None and not isinstance(submitter, AccountAPI):
+            submitter = self.load_submitter(submitter)
+
+        if (
+            submitter is not None
+            and submitter.address not in sigs_by_signer
+            and len(sigs_by_signer) < self.confirmations_required
+            and (submitter.address in self.signers or submitter.address in self.all_delegates())
+        ):
+            if sig := submitter.sign_message(safe_tx):
+                sigs_by_signer[submitter.address] = sig
+
+        # NOTE: Signatures don't have to be in order for Safe API post
+        self.client.post_transaction(
+            safe_tx,
+            sigs_by_signer,
+            sender=submitter.address if submitter else None,
+            contractTransactionHash=contractTransactionHash,
+        )
+
+        return contractTransactionHash
+
     def pending_transactions(self) -> Iterator[tuple[SafeTx, list[SafeTxConfirmation]]]:
         for executed_tx in self.client.get_transactions(confirmed=False):
             yield self.create_safe_tx(
@@ -533,7 +575,7 @@ class SafeAccount(AccountAPI):
 
         return super().call(txn, **call_kwargs)
 
-    def get_api_confirmations(self, safe_tx: SafeTx) -> Dict[AddressType, MessageSignature]:
+    def get_api_confirmations(self, safe_tx: SafeTx) -> dict[AddressType, MessageSignature]:
         safe_tx_id = get_safe_tx_hash(safe_tx)
         try:
             client_confirmations = self.client.get_confirmations(safe_tx_id)
@@ -558,7 +600,7 @@ class SafeAccount(AccountAPI):
             if self.contract.approvedHashes(signer, safe_tx_hash) > 0
         }
 
-    def _all_approvals(self, safe_tx: SafeTx) -> Dict[AddressType, MessageSignature]:
+    def _all_approvals(self, safe_tx: SafeTx) -> dict[AddressType, MessageSignature]:
         approvals = self.get_api_confirmations(safe_tx)
 
         # NOTE: Do this last because it should take precedence
@@ -609,7 +651,7 @@ class SafeAccount(AccountAPI):
             submit (bool): The option to submit the transaction. Defaults to ``True``.
             submitter (Union[``AccountAPI``, ``AddressType``, str, None]):
                 Determine who is submitting the transaction. Defaults to ``None``.
-            skip (Optional[List[Union[``AccountAPI, `AddressType``, str]]]):
+            skip (Optional[list[Union[``AccountAPI, `AddressType``, str]]]):
                 Allow bypassing any specified signer. Defaults to ``None``.
             signatures_required (Optional[int]):
                 The amount of signers required to confirm the transaction. Defaults to ``None``.
@@ -709,12 +751,11 @@ class SafeAccount(AccountAPI):
             f"for Safe {self.address}#{safe_tx.nonce}"  # TODO: put URI
         )
 
-        # NOTE: Signatures don't have to be in order for Safe API post
-        self.client.post_transaction(
+        self.propose_safe_tx(
             safe_tx,
-            sigs_by_signer,
+            submitter=submitter_account,
+            sigs_by_signer=sigs_by_signer,
             contractTransactionHash=safe_tx_hash,
-            sender=submitter_account.address,
         )
 
         # Return None so that Ape does not try to submit the transaction.
@@ -722,7 +763,7 @@ class SafeAccount(AccountAPI):
 
     def add_signatures(
         self, safe_tx: SafeTx, confirmations: Optional[list[SafeTxConfirmation]] = None
-    ) -> Dict[AddressType, MessageSignature]:
+    ) -> dict[AddressType, MessageSignature]:
         confirmations = confirmations or []
         if not self.local_signers:
             raise ApeSafeError("Cannot sign without local signers.")
