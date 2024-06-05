@@ -146,8 +146,6 @@ class MockSafeClient(BaseSafeClient, ManagerAccessMixin):
         return None
 
     def add_delegate(self, delegate: AddressType, label: str, delegator: AccountAPI):
-        delegate = self.conversion_manager.convert(delegate, AddressType)
-
         if delegator.address not in self.safe_details.owners:
             raise SafeClientException(f"'{delegator}' not a valid owner.")
 
@@ -158,8 +156,6 @@ class MockSafeClient(BaseSafeClient, ManagerAccessMixin):
             self.delegates[delegator.address] = [delegate]
 
     def remove_delegate(self, delegate: AddressType, delegator: AccountAPI):
-        delegate = self.conversion_manager.convert(delegate, AddressType)
-
         if delegator.address not in self.safe_details.owners:
             raise SafeClientException(f"'{delegator.address}' not a valid owner.")
 
