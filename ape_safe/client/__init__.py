@@ -4,12 +4,9 @@ from functools import reduce
 from typing import Dict, Iterator, List, Optional, Union, cast
 
 from ape.api import AccountAPI
-from ape.logging import logger
 from ape.types import AddressType, HexBytes, MessageSignature
 from ape.utils.misc import USER_AGENT, get_package_version
-from ape_accounts import KeyfileAccount
 from eip712.common import SafeTxV1, SafeTxV2
-from eth_account import Account as EthAccount
 
 from ape_safe.client.base import BaseSafeClient
 from ape_safe.client.mock import MockSafeClient
