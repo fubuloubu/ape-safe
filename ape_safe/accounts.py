@@ -39,7 +39,7 @@ from ape_safe.utils import get_safe_tx_hash, order_by_signer
 
 
 class SafeContainer(AccountContainerAPI):
-    _accounts: Dict[str, "SafeAccount"] = {}
+    _accounts: dict[str, "SafeAccount"] = {}
 
     @property
     def _account_files(self) -> Iterator[Path]:
@@ -181,7 +181,7 @@ def get_signatures(
     safe_tx: SafeTx,
     signers: Iterable[AccountAPI],
 ) -> dict[AddressType, MessageSignature]:
-    signatures: Dict[AddressType, MessageSignature] = {}
+    signatures: dict[AddressType, MessageSignature] = {}
     for signer in signers:
         signature = signer.sign_message(safe_tx)
         if signature:

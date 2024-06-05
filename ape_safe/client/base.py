@@ -1,8 +1,7 @@
 import time
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
 from functools import cached_property
-from typing import Iterator, Optional, Set, Union
+from typing import Iterator, Optional, Union
 
 import certifi
 import requests
@@ -144,13 +143,13 @@ class BaseSafeClient(ABC):
         session.mount("https://", adapter)
         return session
 
-    def _get(self, url: str, params: Optional[Dict] = None) -> Response:
+    def _get(self, url: str, params: Optional[dict] = None) -> Response:
         return self._request("GET", url, params=params)
 
     def _post(self, url: str, json: Optional[dict] = None, **kwargs) -> Response:
         return self._request("POST", url, json=json, **kwargs)
 
-    def _delete(self, url: str, json: Optional[Dict] = None, **kwargs) -> Response:
+    def _delete(self, url: str, json: Optional[dict] = None, **kwargs) -> Response:
         return self._request("DELETE", url, json=json, **kwargs)
 
     @cached_property
