@@ -95,5 +95,8 @@ jobs:
         - name: Install gnosis safe
           run: npm install "@gnosis.pm/safe-contracts@${{ matrix.safe-version }}"
 
-        - name: Run Tests
-          run: pytest -n 0 -s --cov
+        - name: Run Functional Tests
+          run: ape test tests/functional/ -s --cov -v WARNING
+
+        - name: Run Integration Tests
+          run: pytest tests/integration/ -s --cov

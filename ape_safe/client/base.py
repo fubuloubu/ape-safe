@@ -1,12 +1,14 @@
+import time
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
 from functools import cached_property
-from typing import Optional, Union
+from typing import Iterator, Optional, Union
 
 import certifi
 import requests
 import urllib3
-from ape.types import AddressType, MessageSignature
+from ape.api import AccountAPI
+from ape.types import AddressType, HexBytes, MessageSignature
+from eth_utils import keccak
 from requests import Response
 from requests.adapters import HTTPAdapter
 
@@ -112,6 +114,21 @@ class BaseSafeClient(ABC):
 
             yield txn
 
+    def create_delegate_message(self, delegate: AddressType) -> HexBytes:
+        # NOTE: referencing https://github.com/safe-global/safe-eth-py/blob/
+        # a0a5771622f143ee6301cfc381c5ed50832ff482/gnosis/safe/api/transaction_service_api.py#L34
+        totp = int(time.time()) // 3600
+        return HexBytes(keccak(text=(delegate + str(totp))))
+
+    @abstractmethod
+    def get_delegates(self) -> dict[AddressType, list[AddressType]]: ...
+
+    @abstractmethod
+    def add_delegate(self, delegate: AddressType, label: str, delegator: AccountAPI): ...
+
+    @abstractmethod
+    def remove_delegate(self, delegate: AddressType, delegator: AccountAPI): ...
+
     """Request methods"""
 
     @cached_property
@@ -126,11 +143,14 @@ class BaseSafeClient(ABC):
         session.mount("https://", adapter)
         return session
 
-    def _get(self, url: str) -> Response:
-        return self._request("GET", url)
+    def _get(self, url: str, params: Optional[dict] = None) -> Response:
+        return self._request("GET", url, params=params)
 
     def _post(self, url: str, json: Optional[dict] = None, **kwargs) -> Response:
         return self._request("POST", url, json=json, **kwargs)
+
+    def _delete(self, url: str, json: Optional[dict] = None, **kwargs) -> Response:
+        return self._request("DELETE", url, json=json, **kwargs)
 
     @cached_property
     def _http(self):

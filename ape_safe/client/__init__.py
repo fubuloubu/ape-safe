@@ -1,8 +1,9 @@
 import json
 from datetime import datetime
 from functools import reduce
-from typing import Dict, Iterator, Optional, Union, cast
+from typing import Dict, Iterator, List, Optional, Union, cast
 
+from ape.api import AccountAPI
 from ape.types import AddressType, HexBytes, MessageSignature
 from ape.utils.misc import USER_AGENT, get_package_version
 from eip712.common import SafeTxV1, SafeTxV2
@@ -10,6 +11,7 @@ from eip712.common import SafeTxV1, SafeTxV2
 from ape_safe.client.base import BaseSafeClient
 from ape_safe.client.mock import MockSafeClient
 from ape_safe.client.types import (
+    DelegateInfo,
     ExecutedTxData,
     OperationType,
     SafeApiTxData,
@@ -21,6 +23,7 @@ from ape_safe.client.types import (
     UnexecutedTxData,
 )
 from ape_safe.exceptions import (
+    ActionNotPerformedError,
     ClientResponseError,
     ClientUnsupportedChainError,
     MultisigTransactionNotFoundError,
@@ -127,7 +130,7 @@ class SafeClient(BaseSafeClient):
                 b"",
             )
         )
-        post_dict: Dict = {"signature": signature.hex(), "origin": ORIGIN}
+        post_dict: Dict = {"signature": signature.hex() if signature else None, "origin": ORIGIN}
 
         for key, value in tx_data.model_dump(by_alias=True, mode="json").items():
             if isinstance(value, HexBytes):
@@ -185,6 +188,53 @@ class SafeClient(BaseSafeClient):
         result = self._post(url, json=request).json()
         gas = result.get("safeTxGas")
         return int(HexBytes(gas).hex(), 16)
+
+    def get_delegates(self) -> Dict[AddressType, List[AddressType]]:
+        url = "delegates"
+        delegates: Dict[AddressType, List[AddressType]] = {}
+
+        while url:
+            response = self._get(url, params={"safe": self.address})
+            data = response.json()
+
+            for delegate_info in map(DelegateInfo.model_validate, data.get("results", [])):
+                if delegate_info.delegator not in delegates:
+                    delegates[delegate_info.delegator] = [delegate_info.delegate]
+                else:
+                    delegates[delegate_info.delegator].append(delegate_info.delegate)
+
+            url = data.get("next")
+
+        return delegates
+
+    def add_delegate(self, delegate: AddressType, label: str, delegator: AccountAPI):
+        msg_hash = self.create_delegate_message(delegate)
+
+        # NOTE: This is required as Safe API uses an antiquated .signHash method
+        if not (sig := delegator.sign_raw_msghash(msg_hash)):
+            raise ActionNotPerformedError("Did not sign delegate approval")
+
+        payload = {
+            "safe": self.address,
+            "delegate": delegate,
+            "delegator": delegator.address,
+            "label": label,
+            "signature": sig.encode_rsv().hex(),
+        }
+        self._post("delegates", json=payload)
+
+    def remove_delegate(self, delegate: AddressType, delegator: AccountAPI):
+        msg_hash = self.create_delegate_message(delegate)
+
+        # NOTE: This is required as Safe API uses an antiquated .signHash method
+        if not (sig := delegator.sign_raw_msghash(msg_hash)):
+            raise ActionNotPerformedError("Did not sign delegate removal")
+
+        payload = {
+            "delegator": delegator.address,
+            "signature": sig.encode_rsv().hex(),
+        }
+        self._delete(f"delegates/{delegate}", json=payload)
 
 
 __all__ = [
